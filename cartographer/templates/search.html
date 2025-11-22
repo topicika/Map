@@ -1,17 +1,172 @@
-<!DOCTYPE html>
-<html lang="en">
+{% load static %}
+<!doctype html>
+<html lang="hu">
 <head>
     <meta charset="UTF-8">
-    <title>Dynamic Search Dropdown</title>
+    <meta name="viewport"
+          content="width=device-width, user-scalable=no, initial-scale=1.0, maximum-scale=1.0, minimum-scale=1.0">
+    <meta http-equiv="X-UA-Compatible" content="ie=edge">
+    <title>Útvonaltervező</title>
+    <link rel="stylesheet" href="{% static 'result.css' %}">
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap@4.0.0/dist/css/bootstrap.min.css" integrity="sha384-Gn5384xqQ1aoWXA+058RXPxPg6fy4IWvTNh0E263XmFcJlSAwiGgFAW/dAiS6JXm" crossorigin="anonymous">
 </head>
-<body>
-<h1>request.GET.levels}}</h1>
-    <input type="text" id="search1" placeholder="Search here..." onkeyup="fetchDropdownData('search1')">
-    <select id="dropdown1"></select>
+<body class="text-center">
+<a href="{% url 'help' %}" class="btn btn-secondary">Súgó</a>
+<div class="alert-wrapper">
+    {% if messages %}
+      <div class="container mt-3">
+        {% for message in messages %}
+          <div class="alert alert-danger alert-dismissible fade show" role="alert">
+            {{ message }}
+          </div>
+        {% endfor %}
+      </div>
+    {% endif %}
+  </div>
+    <div class="main-content">
+    <form action="map_result" class="form-signin" method="get">
+        <h1 class="h3 mb-3 font-weight-normal">Útvonaltervező</h1>
+        <div class="form-group">
+        <label for="maps">Válassz épületet:</label>
+        <select id="maps" name="dataset" class="form-control">
+            <option value="LE.json" {% if request.GET.dataset == "LE.json" or not request.GET.dataset %}selected
+            {% endif %} >Lágymányosi Észak</option>
+        </select>
+        </div>
 
-    <input type="text" id="search2" placeholder="Search here..." onkeyup="fetchDropdownData('search2')">
-    <select id="dropdown2"></select>
+        <div>
+            <label for="sourceinput">Indulási hely</label>
+            <input id="sourceinput" name="sourceinput" autoComplete="on" list="suggestions1" class="form-control"
+            value="{{ request.GET.sourceinput|default_if_none:'' }}"/>
+            <datalist id="suggestions1"></datalist>
+        </div>
 
-    <script src="script.js"></script>
+        <div>
+            <label for="goalinput">Úti cél</label>
+            <input id="goalinput" name="goalinput" autoComplete="on" list="suggestions2" class="form-control"
+            value="{{ request.GET.goalinput|default_if_none:'' }}"/>
+            <datalist id="suggestions2"></datalist>
+        </div>
+
+        <label for="avoidstairs">Lépcsők kerülése</label>
+        <input id="avoidstairs" name="avoidstairs" type="checkbox"
+               {% if request.GET.avoidstairs == "on" or not request.GET.avoidstairs %}checked{% endif %}>
+        <br>
+        <label for="useclosed">Zárt folyosók használata</label>
+        <input id="useclosed" name="useclosed" type="checkbox"
+        {% if request.GET.useclosed == "on" %}checked{% endif %}>
+
+        <label for="useastar">Gyorsabb algoritmus használata</label>
+        <input id="useastar" name="useastar" type="checkbox"
+        {% if request.GET.useastar == "on" or not request.GET.useastar %}checked{% endif %}>
+
+        <label for="sourceid" hidden>Source node id</label>
+        <input id="sourceid" value="" hidden/>
+        <label for="goalid" hidden>Goal node id</label>
+        <input id="goalid" value="" hidden/>
+        <button class="btn btn-lg btn-primary btn-block" type="submit">Tervezés</button>
+    </form>
+    </div>
+<script>
+document.addEventListener("DOMContentLoaded", () => {
+  const input1 = document.getElementById("sourceinput");
+  const input2 = document.getElementById("goalinput");
+  const suggestion1 = document.getElementById("suggestions1");
+  const suggestion2 = document.getElementById("suggestions2");
+  const hidden1 = document.getElementById("sourceid");
+  const hidden2 = document.getElementById("goalid");
+  const maps = document.getElementById("maps");
+
+  let abortController = null;
+  //Cache stores searches, so less request needed
+  const cache = {};
+  const MAX_CACHE_ENTRIES = 200;
+
+  //Delays a function call.
+  function debounce(func, delay) {
+    let timeout;
+    return (...args) => {
+      clearTimeout(timeout);
+      timeout = setTimeout(() => func(...args), delay);
+    };
+  }
+
+  //Sends a text to return the nodes corresponding to the text.
+  async function fetchSuggestions(input, suggestionBox, hiddenInput) {
+    const input_text = input.value.trim();
+    const mapName = maps.value;
+
+    if (!input_text) {
+      suggestionBox.innerHTML = "";
+      hiddenInput.value = "";
+      return;
+    }
+
+    const cacheKey = mapName + ":" + input_text.toLowerCase();
+    if (cache[cacheKey]) {
+      updateSuggestions(cache[cacheKey], suggestionBox, input, hiddenInput);
+      return;
+    }
+
+    if (abortController) abortController.abort();
+    abortController = new AbortController();
+
+    try {
+      const result = await fetch(
+        `/search?node=${encodeURIComponent(input_text)}&file=${encodeURIComponent(mapName)}`,
+        { signal: abortController.signal }
+      );
+
+      if (!result.ok) {
+        suggestionBox.innerHTML = "";
+        return;
+      }
+
+      const data = await result.json();
+
+      cache[cacheKey] = data.nodes;
+      if (Object.keys(cache).length > MAX_CACHE_ENTRIES) {
+        delete cache[Object.keys(cache)[0]];
+      }
+
+      updateSuggestions(data.nodes, suggestionBox, input, hiddenInput);
+    } catch (err) {
+      if (err.name !== "AbortError") console.warn("Fetch error:", err);
+    }
+  }
+
+  //Insert a new suggestions to the given suggestionBox.
+  function updateSuggestions(nodes, suggestionBox, input, hiddenInput) {
+    suggestionBox.innerHTML = "";
+
+    for (const node of nodes) {
+      const id = node.identifier;
+      const aliases = node.aliases || [];
+      const labelText = aliases.length ? `${id} (${aliases.join(", ")})` : id;
+
+      const optionElement = document.createElement("option");
+      optionElement.value = id;
+      optionElement.dataset.node = id;
+      optionElement.label = labelText;
+      suggestionBox.appendChild(optionElement);
+    }
+
+    const selectedOption = Array.from(suggestionBox.options).find(
+      (option) => option.value.toLowerCase() === input.value.toLowerCase()
+    );
+    hiddenInput.value = selectedOption ? selectedOption.dataset.node : "";
+  }
+
+  const debouncedFetch1 = debounce(() => fetchSuggestions(input1, suggestion1, hidden1), 250);
+  const debouncedFetch2 = debounce(() => fetchSuggestions(input2, suggestion2, hidden2), 250);
+
+  if (input1) input1.addEventListener("input", debouncedFetch1);
+  if (input2) input2.addEventListener("input", debouncedFetch2);
+
+  maps.addEventListener("change", () => {
+    Object.keys(cache).forEach(k => delete cache[k]);
+  });
+});
+</script>
 </body>
 </html>

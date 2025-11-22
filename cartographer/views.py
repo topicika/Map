@@ -10,6 +10,7 @@ from .Node import *
 import os
 import threading
 
+#Graph is loaded at the start of the server for faster search
 _graph_cache = {}
 _graph_lock = threading.Lock()
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
@@ -22,7 +23,7 @@ BUILDING_LEVELS = {
     }
 }
 
-
+#Loads the cache if it's still empty
 def load_all_graphs():
     if _graph_cache:
         return _graph_cache
@@ -41,12 +42,12 @@ def load_all_graphs():
 
 
 def index(request):
-    return render(request, 'result.html')
+    return render(request, 'search.html')
 
-
+#If the request valid map_result loads the map with the route
 def map_result(request):
     map_names = ["LE.json"]
-    template = loader.get_template('proba_result.html')
+    template = loader.get_template('result.html')
     source = request.GET.get("sourceinput", "")
     goal = request.GET.get("goalinput", "")
     dataset = request.GET.get("dataset", "LE.json")
@@ -102,7 +103,7 @@ def map_result(request):
 
     return HttpResponse(template.render(context, request))
 
-
+#Loads the Targetable node suggestions if the search_text matches
 def search(request):
     if request.method != "GET":
         return HttpResponse(status=405)
@@ -131,3 +132,6 @@ def search(request):
 
 
 load_all_graphs()
+
+def help(request):
+    return render(request, 'help.html')

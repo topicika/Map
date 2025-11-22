@@ -1,0 +1,95 @@
+{% load static %}
+<!DOCTYPE html>
+<html lang="hu">
+<head>
+<meta charset="UTF-8">
+<title>Súgó</title>
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap@4.0.0/dist/css/bootstrap.min.css" integrity="sha384-Gn5384xqQ1aoWXA+058RXPxPg6fy4IWvTNh0E263XmFcJlSAwiGgFAW/dAiS6JXm" crossorigin="anonymous">
+    <link rel="stylesheet" href="{% static 'result.css' %}">
+</head>
+<body>
+<div class="content">
+<h1>Súgó</h1>
+<p>Ez a lap mutatja be a weboldal működését.</p>
+
+<div class="section">
+<h2>Főoldal működése</h2>
+    <p>A főoldal az alábbi részekkel rendelkezik:</p>
+    <br>
+    <img src="{% static 'images/epulet.png' %}" alt="Épületválasztó kép" class="border border-dark border-2">
+    <p>Épületválasztó: segítségével kiválasztható, hogy mely épület termei között történjen a keresés. A keresés
+        beküldésekor a rendszer a kiválasztott épülethez tartozó térképet adja vissza.</p>
+        <br><br>
+    <img src="{% static 'images/indulas.png' %}" alt="Indulási hely kép" class="border border-dark border-2">
+    <p>Indulási hely mezőben: segítségével megadható kezdőpozícióként annak az oktatási egységnek az azonosítója vagy
+        neve, ahol a felhasználó jelenleg tartózkodik. Gépelés közben a böngésző megjeleníti javaslatokat a begépelt
+        szöveg alapján. (Az épületen belül a teremnevek megváltozhatnak, ezért bizonyos esetekben érdemes lehet
+        azonosító alapján keresni)</p>
+        <br><br>
+    <img src="{% static 'images/cel.png' %}" alt="Úti cél kép" class="border border-dark border-2">
+    <p>Úti cél mező: itt megadható végpozícióként annak az oktatási egységnek az azonosítója vagy neve, ahova a
+        felhasználó el szeretne jutni. Gépelés közben a böngésző megjeleníti javaslatokat a begépelt szöveg alapján.
+        (Az épületen belül a teremnevek megváltozhatnak, ezért érdemes lehet azonosító alapján keresni)</p>
+        <br><br>
+    <img src="{% static 'images/lepcsok.png' %}" alt="Lépcsők kerülése kép" class="border border-dark border-2">
+    <p>Lépcsők kerülése mező: bejelölése olyan útvonal kiszámítását eredményezi, amely elkerüli azokat az útvonalakat,
+        amelyek lépcsőket vagy nem akadálymentes szakaszokat tartalmaznak.</p>
+        <br><br>
+    <img src="{% static 'images/zart.png' %}" alt="Zárt folyosók kép" class="border border-dark border-2">
+    <p>Zárt folyosók használata: mező bejelölése lehetővé teszi olyan folyosószakaszok használatát is, amit kizárólag
+        speciális belépőeszközökkel (pl. beléptetőkártyával) közelíthetőek meg.</p>
+        <br><br>
+    <img src="{% static 'images/algoritmus.png' %}" alt="Gyorsabb algoritmus kép" class="border border-dark border-2">
+    <p>Gyorsabb algoritmus használata: mező lehetővé teszi, hogy az összetettebb térképek esetén a projekt gyorsabban
+        képes betölteni az útvonalat, de lehetséges hogy nem a legrövidebb utat adja vissza.</p>
+        <br><br>
+    <img src="{% static 'images/tervezes.png' %}" alt="Tervezés gomb kép" class="border border-dark border-2">
+    <p>Tervezés gomb: megnyomása képes betölteni a térképet a kért útvonallal, amennyiben megfelelőek a keresés
+        paraméterei.</p>
+    <br>
+
+    <h3>A főoldal hibaüzenetei</h3>
+    <p>A főoldal hibaüzenetei akkor jelenhetnek meg, ha a tervezés gomb lenyomása után, nem lehetséges az útvonaltervezés.
+        <br> Hibaüzentek:</p>
+    <ul>
+        <li>"Az indulási hely vagy az úti cél nincs kitöltve!" -
+            <br>Az szövegmezők nincsenek kitöltve.</li>
+        <br><br>
+        <li>Az indulási hely vagy cél nem megfelelő azonosítót tartalmaz! -
+            <br>A szövegmezől valamelyikében nem létező azonosító szerepel.</li>
+        <br><br>
+        <li>A jelenlegi beállításoknak megfelelő útvonal nem létezik! -
+            <br>A lépcsők kerülése mező be van jelölve egy olyan útvonalon, amely útvonalat nem lehet létrehozni
+            akadálymentesen vagy nincs bejelölve a zárt folyosók használata mező és az útvonal nem megtervezhető ilyen
+            szakaszok nélkül.</li>
+        <br>
+    </ul>
+
+</div>
+
+<div class="section">
+<h2>Térkép működése</h2>
+<p>A térkép oldal az alábbi részekkel rendelkezik:</p>
+    <img src="{% static 'images/fooldal.png' %}" alt="Épületválasztó kép" class="border border-dark border-2">
+    <p>Vissza a főoldalra gomb: a keresőfelületre irányítja vissza a felhasználót.</p>
+    <br><br>
+    <img src="{% static 'images/emeletek.png' %}" alt="Épületválasztó kép" class="border border-dark border-2">
+    <p>Emeletválasztó gombok: az oldal alján találhatók. A megfelelő gomb megnyomásával betöltődik a kiválasztott
+        emelet térképe, valamint a hozzá tartozó útvonal.</p>
+    <br><br>
+    <img src="{% static 'images/grafika.png' %}" alt="Épületválasztó kép" class="border border-dark border-2"
+         style="width: 500px">
+    <p>Térkép: a grafikus információk megjelenítéséért felelős elem. Amennyiben a kurzor a térkép fölött
+        helyezkedik el, az egérgörgő segítségével nagyítani és kicsinyíteni lehet a nézetet. A térképre kattintva és az
+        egeret elhúzva a felhasználó elmozdíthatja a térkép nézetét.</p>
+    <br>
+    <h3>A Térkép jelölései</h3>
+
+</div>
+<img src="{% static 'images/terkep_tabla.png' %}" alt="Jelölések kép" class="border border-dark border-2"
+style="width: 700px">
+<br><br>
+<a href="{% url 'index' %}" class="btn btn-secondary">Vissza a főoldalra</a>
+</div>
+</body>
+</html>

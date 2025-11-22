@@ -1,167 +1,229 @@
 {% load static %}
-<!doctype html>
+<!DOCTYPE html>
 <html lang="hu">
 <head>
     <meta charset="UTF-8">
-    <meta name="viewport"
-          content="width=device-width, user-scalable=no, initial-scale=1.0, maximum-scale=1.0, minimum-scale=1.0">
-    <meta http-equiv="X-UA-Compatible" content="ie=edge">
-    <title>Útvonaltervező</title>
-    <link rel="stylesheet" href="{% static 'result.css' %}">
+    <title>Térkép</title>
+    <style>
+    canvas {
+      border: 1px solid #ccc;
+      cursor: grab;
+    }
+    canvas:active {
+      cursor: grabbing;
+    }
+    </style>
     <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap@4.0.0/dist/css/bootstrap.min.css" integrity="sha384-Gn5384xqQ1aoWXA+058RXPxPg6fy4IWvTNh0E263XmFcJlSAwiGgFAW/dAiS6JXm" crossorigin="anonymous">
 </head>
-<body class="text-center">
-<div class="alert-wrapper">
-    {% if messages %}
-      <div class="container mt-3">
-        {% for message in messages %}
-          <div class="alert alert-danger alert-dismissible fade show" role="alert">
-            {{ message }}
-          </div>
-        {% endfor %}
-      </div>
-    {% endif %}
+<body>
+  <div class="m-2">
+    <a href="{% url 'index' %}" class="btn btn-secondary">Vissza a főoldalra</a>
   </div>
-    <div class="main-content">
-    <form action="map_result" class="form-signin" method="get">
-        <h1 class="h3 mb-3 font-weight-normal">Útvonaltervező</h1>
-        <div class="form-group">
-        <label for="maps">Válassz épületet:</label>
-        <select id="maps" name="dataset" class="form-control">
-            <option value="LE.json" {% if request.GET.dataset == "LE.json" or not request.GET.dataset %}selected
-            {% endif %} >Lágymányosi Észak</option>
-        </select>
-        </div>
+  <canvas id="myCanvas" width="1000" height="650"></canvas>
+  <br>
+  {% for level, _ in levels %}
+      <button type="button" id="level-{{ level }}" class="btn btn-sm btn-primary">{{ level }}</button>
+  {% endfor %}
 
-        <div>
-            <label for="sourceinput">Indulási hely</label>
-            <input id="sourceinput" name="sourceinput" autoComplete="on" list="suggestions1" class="form-control"
-            value="{{ request.GET.sourceinput|default_if_none:'' }}"/>
-            <datalist id="suggestions1"></datalist>
-        </div>
+  <script>
+    const path = {{ path_json|safe }};
+    const canvas = document.getElementById('myCanvas');
+    const context = canvas.getContext('2d');
+    const BASEPATH = "{% static 'images/' %}";
+    let currentImage = null;
+    let zoom = 1.0;
+    let offsetX = 0;
+    let offsetY = 0;
+    let isDragged = false;
+    let startX, startY;
+    let currentLevel = undefined;
+    {% for level, _ in levels %}
+        const level{{ forloop.counter0 }} = document.getElementById("level-{{ level }}")
+    {% endfor %}
 
-        <div>
-            <label for="goalinput">Úti cél</label>
-            <input id="goalinput" name="goalinput" autoComplete="on" list="suggestions2" class="form-control"
-            value="{{ request.GET.goalinput|default_if_none:'' }}"/>
-            <datalist id="suggestions2"></datalist>
-        </div>
+    canvas.addEventListener('mouseup', () => isDragged = false);
+    canvas.addEventListener('mouseleave', () => isDragged = false);
+    {% for level, image_name in levels %}
+        level{{ forloop.counter0 }}.addEventListener('click', () => drawLevel('{{image_name}}', {{ level }}))
+    {% endfor %}
 
-        <label for="avoidstairs">Lépcsők kerülése</label>
-        <input id="avoidstairs" name="avoidstairs" type="checkbox"
-               {% if request.GET.avoidstairs == "on" or not request.GET.avoidstairs %}checked{% endif %}>
-        <br>
-        <label for="useclosed">Zárt folyosók használata</label>
-        <input id="useclosed" name="useclosed" type="checkbox"
-        {% if request.GET.useclosed == "on" %}checked{% endif %}>
+    //The mouse wheel zooms the map in and out.
+    canvas.addEventListener('wheel', (e) => {
+     if (!currentImage) return;
+     e.preventDefault();
 
-        <label for="useastar">Gyorsabb algoritmus használata</label>
-        <input id="useastar" name="useastar" type="checkbox"
-        {% if request.GET.useastar == "on" or not request.GET.useastar %}checked{% endif %}>
+     const rect = canvas.getBoundingClientRect();
+     const mouseX = e.clientX - rect.left;
+     const mouseY = e.clientY - rect.top;
 
-        <label for="sourceid" hidden>Source node id</label>
-        <input id="sourceid" value="" hidden/>
-        <label for="goalid" hidden>Goal node id</label>
-        <input id="goalid" value="" hidden/>
-        <button class="btn btn-lg btn-primary btn-block" type="submit">Tervezés</button>
-    </form>
-    </div>
-<script>
-document.addEventListener("DOMContentLoaded", () => {
-  const input1 = document.getElementById("sourceinput");
-  const input2 = document.getElementById("goalinput");
-  const suggestion1 = document.getElementById("suggestions1");
-  const suggestion2 = document.getElementById("suggestions2");
-  const hidden1 = document.getElementById("sourceid");
-  const hidden2 = document.getElementById("goalid");
-  const maps = document.getElementById("maps");
+     const prevZoom = zoom;
+     const zoomAmount = e.deltaY * -0.001;
+     zoom = Math.min(Math.max(zoom + zoomAmount, 0.5), 10.0);
 
-  let abortController = null;
-  const cache = {};
-  const MAX_CACHE_ENTRIES = 200;
+     const imgAspect = currentImage.width / currentImage.height;
+     const canvasAspect = canvas.width / canvas.height;
+     let drawWidth, drawHeight;
 
-  function debounce(func, delay) {
-    let timeout;
-    return (...args) => {
-      clearTimeout(timeout);
-      timeout = setTimeout(() => func(...args), delay);
-    };
-  }
+     if (imgAspect > canvasAspect) {
+       drawWidth = canvas.width * prevZoom;
+       drawHeight = (canvas.width / imgAspect) * prevZoom;
+     } else {
+       drawHeight = canvas.height * prevZoom;
+       drawWidth = (canvas.height * imgAspect) * prevZoom;
+     }
 
-  async function fetchSuggestions(input, suggestionBox, hiddenInput) {
-    const input_text = input.value.trim();
-    const mapName = maps.value;
+     const prevX = (canvas.width - drawWidth) / 2 + offsetX;
+     const prevY = (canvas.height - drawHeight) / 2 + offsetY;
 
-    if (!input_text) {
-      suggestionBox.innerHTML = "";
-      hiddenInput.value = "";
-      return;
+     const mouseRelX = (mouseX - prevX) / drawWidth;
+     const mouseRelY = (mouseY - prevY) / drawHeight;
+
+     if (imgAspect > canvasAspect) {
+       drawWidth = canvas.width * zoom;
+       drawHeight = (canvas.width / imgAspect) * zoom;
+     } else {
+       drawHeight = canvas.height * zoom;
+       drawWidth = (canvas.height * imgAspect) * zoom;
+     }
+
+     const newX = mouseX - mouseRelX * drawWidth;
+     const newY = mouseY - mouseRelY * drawHeight;
+
+     offsetX = newX - (canvas.width - drawWidth) / 2;
+     offsetY = newY - (canvas.height - drawHeight) / 2;
+
+     drawImage();
+   });
+
+
+    canvas.addEventListener('mousedown', (e) => {
+      isDragged = true;
+      startX = e.offsetX;
+      startY = e.offsetY;
+    });
+
+    //If the left mouse button is clicked and the mouse is moved,
+    //the map will be moved
+    canvas.addEventListener('mousemove', (e) => {
+      if (!isDragged) return;
+      offsetX += e.offsetX - startX;
+      offsetY += e.offsetY - startY;
+      startX = e.offsetX;
+      startY = e.offsetY;
+      drawImage();
+    });
+
+
+    //Draws a new image to the canvas
+    function drawLevel(imageName, level) {
+      const image = new Image();
+      image.src = BASEPATH + imageName;
+      image.onload = function() {
+        currentImage = image;
+        currentLevel = level;
+        zoom = 1.0;
+        offsetX = 0;
+        offsetY = 0;
+        drawImage();
+      };
     }
 
-    const cacheKey = mapName + ":" + input_text.toLowerCase();
-    if (cache[cacheKey]) {
-      updateSuggestions(cache[cacheKey], suggestionBox, input, hiddenInput);
-      return;
-    }
+    //Redraws the image and the path.
+    function drawImage() {
+      if (!currentImage) return;
+      context.clearRect(0, 0, canvas.width, canvas.height);
+      const imgAspect = currentImage.width / currentImage.height;
+      const canvasAspect = canvas.width / canvas.height;
+      let drawWidth, drawHeight;
 
-    if (abortController) abortController.abort();
-    abortController = new AbortController();
-
-    try {
-      const result = await fetch(
-        `/search?node=${encodeURIComponent(input_text)}&file=${encodeURIComponent(mapName)}`,
-        { signal: abortController.signal }
-      );
-
-      if (!result.ok) {
-        suggestionBox.innerHTML = "";
-        return;
+      if (imgAspect > canvasAspect) {
+        drawWidth = canvas.width * zoom;
+        drawHeight = (canvas.width / imgAspect) * zoom;
+      } else {
+        drawHeight = canvas.height * zoom;
+        drawWidth = (canvas.height * imgAspect) * zoom;
       }
 
-      const data = await result.json();
+      const imageX = (canvas.width - drawWidth) / 2 + offsetX;
+      const imageY = (canvas.height - drawHeight) / 2 + offsetY;
+      context.drawImage(currentImage, imageX, imageY, drawWidth, drawHeight);
 
-      cache[cacheKey] = data.nodes;
-      if (Object.keys(cache).length > MAX_CACHE_ENTRIES) {
-        delete cache[Object.keys(cache)[0]];
+      if (!path || path.length === 0) return;
+
+      const levelPoints = path.filter(nodes => nodes.level === currentLevel);
+
+      if (levelPoints.length > 1) {
+        context.beginPath();
+        context.lineWidth = 2;
+        context.strokeStyle = "red";
+
+        const scaleX = drawWidth / currentImage.width;
+        const scaleY = drawHeight / currentImage.height;
+
+        for (let i = 0; i < levelPoints.length - 1; i++) {
+          const sourcePoint = levelPoints[i];
+          const goalPoint = levelPoints[i + 1];
+          const sourceX = imageX + sourcePoint.x * scaleX;
+          const sourceY = imageY + sourcePoint.y * scaleY;
+          const goalX = imageX + goalPoint.x * scaleX;
+          const goalY = imageY + goalPoint.y * scaleY;
+          context.moveTo(sourceX, sourceY);
+          context.lineTo(goalX, goalY);
+        }
+        context.stroke();
       }
 
-      updateSuggestions(data.nodes, suggestionBox, input, hiddenInput);
-    } catch (err) {
-      if (err.name !== "AbortError") console.warn("Fetch error:", err);
+      const scaleX = drawWidth / currentImage.width;
+      const scaleY = drawHeight / currentImage.height;
+
+      for (let i = 0; i < path.length - 1; i++) {
+        const currentPoint = path[i];
+        const nextPoint = path[i + 1];
+        if (currentPoint.level !== nextPoint.level && currentPoint.level === currentLevel) {
+          const arrowX = imageX + currentPoint.x * scaleX;
+          const arrowY = imageY + currentPoint.y * scaleY;
+          drawArrow(arrowX, arrowY, nextPoint.level > currentPoint.level ? "up" : "down");
+        }
+        else if (i === 0 && currentPoint.level === currentLevel){
+            const arrowX = imageX + currentPoint.x * scaleX;
+            const arrowY = imageY + currentPoint.y * scaleY;
+            drawCircle(arrowX, arrowY, "black", 4)
+        }
+        if(i === (path.length - 2) && nextPoint.level === currentLevel){
+            const arrowX = imageX + nextPoint.x * scaleX;
+            const arrowY = imageY + nextPoint.y * scaleY;
+            drawCircle(arrowX, arrowY, "blue", 4)
+        }
+      }
     }
-  }
 
-  function updateSuggestions(nodes, suggestionBox, input, hiddenInput) {
-    suggestionBox.innerHTML = "";
-
-    for (const node of nodes) {
-      const id = node.identifier;
-      const aliases = node.aliases || [];
-      const labelText = aliases.length ? `${id} (${aliases.join(", ")})` : id;
-
-      const optionElement = document.createElement("option");
-      optionElement.value = id;
-      optionElement.dataset.node = id;
-      optionElement.label = labelText;
-      suggestionBox.appendChild(optionElement);
+    function drawArrow(arrowX, arrowY, direction) {
+      context.fillStyle = "blue";
+      context.beginPath();
+      if (direction === "up") {
+        context.moveTo(arrowX, arrowY - 10);
+        context.lineTo(arrowX - 6, arrowY + 6);
+        context.lineTo(arrowX + 6, arrowY + 6);
+      } else {
+        context.moveTo(arrowX, arrowY + 10);
+        context.lineTo(arrowX - 6, arrowY - 6);
+        context.lineTo(arrowX + 6, arrowY - 6);
+      }
+      context.closePath();
+      context.fill();
     }
 
-    const selectedOption = Array.from(suggestionBox.options).find(
-      (option) => option.value.toLowerCase() === input.value.toLowerCase()
-    );
-    hiddenInput.value = selectedOption ? selectedOption.dataset.node : "";
-  }
-
-  const debouncedFetch1 = debounce(() => fetchSuggestions(input1, suggestion1, hidden1), 250);
-  const debouncedFetch2 = debounce(() => fetchSuggestions(input2, suggestion2, hidden2), 250);
-
-  if (input1) input1.addEventListener("input", debouncedFetch1);
-  if (input2) input2.addEventListener("input", debouncedFetch2);
-
-  maps.addEventListener("change", () => {
-    Object.keys(cache).forEach(k => delete cache[k]);
-  });
-});
-</script>
+    function drawCircle(px, py, color, radius) {
+      context.save();
+      context.beginPath();
+      context.arc(px, py, radius, 0, 2 * Math.PI);
+      context.fillStyle = color;
+      context.strokeStyle = "black";
+      context.lineWidth = 2;
+      context.fill();
+      context.stroke();
+      context.restore();
+    }
+  </script>
 </body>
 </html>
